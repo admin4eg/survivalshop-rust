@@ -117,7 +117,7 @@ namespace Oxide.Plugins
             public DateTime TimeoutTime;
             public Coroutine Routine;
             public static string ImageUrl = "http://survivalshop.org";
-            public static string ApiUrl = "http://api.survivalshop.org";
+            public static string ApiUrl = "https://survivalshop.razorwind.ru";
             public Dictionary<string, object> Data;
             public ApiFunc Completed;
             public string RequestFor;

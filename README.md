@@ -15,3 +15,9 @@ SurvivalShop donation plugin for Rust
 Located under 'NoSSL' folder
 
 Use it instead of generic plugin if you have issues with SSL connection with your Rust server
+
+## SRVGAME plugin version
+
+Located under 'SrvGame' folder
+
+Use it instead of generic plugin if you using SrvGame.ru hosting and have "403 Forbidden" error
