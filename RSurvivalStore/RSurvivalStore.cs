@@ -13,11 +13,11 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("RSurvivalStore", "RustInnovate", "2.9.6")]
+    [Info("RSurvivalStore", "RustInnovate", "2.9.7")]
     [Description(
         "Клиент RSurvivalStore с пользовательским интерфейсом на основе изображений, ScrollView и WipeBlock."
     )]
-    public partial class RSurvivalStore : RustPlugin
+    public class RSurvivalStore : RustPlugin
     {
         private Configuration _config;
         private Dictionary<string, string> _imageCache = new Dictionary<string, string>();
@@ -25,6 +25,8 @@ namespace Oxide.Plugins
         private Dictionary<string, JArray> _playerItems = new Dictionary<string, JArray>();
         private Dictionary<ulong, string> _activeAddonParent = new Dictionary<ulong, string>();
         private bool _isRegistered = false;
+        private string _hudIconPngId = "";
+        private string _blueprintIconPngId = "";
 
         #region Configuration
 
@@ -36,8 +38,8 @@ namespace Oxide.Plugins
             [JsonProperty("Настройка блокировки товаров после вайпа")]
             public List<WipeBlockItem> WipeBlocks { get; set; } = new List<WipeBlockItem>();
 
-            [JsonProperty("Настройки дизайна (Изображения)")]
-            public UIDesignConfig Design { get; set; } = new UIDesignConfig();
+            [JsonProperty("Настройки интерфейса")]
+            public UISettingsConfig UI { get; set; } = new UISettingsConfig();
         }
 
         private class ShopConfig
@@ -73,124 +75,173 @@ namespace Oxide.Plugins
             public float BlockHours { get; set; } = 24f;
         }
 
-        private class UIDesignConfig
+        private class UISettingsConfig
         {
-            [JsonProperty("1. Панель фон под заголовок")]
-            public UIDesignElement Header { get; set; } =
-                new UIDesignElement
-                {
-                    ImageName = "header",
-                    Width = 700,
-                    Height = 60,
-                    OffsetX = 0,
-                    OffsetY = 280,
-                };
+            [JsonProperty("1. Общий фон меню в автономном режиме (цвет)")]
+            public string MainBgColor { get; set; } = "0 0 0 0.5";
 
-            [JsonProperty("2. Панель фон главной корзины")]
-            public UIDesignElement MainBg { get; set; } =
-                new UIDesignElement
-                {
-                    ImageName = "main_bg",
-                    Width = 700,
-                    Height = 500,
-                    OffsetX = 0,
-                    OffsetY = -10,
-                };
+            #region Panels (Header & Content)
+            [JsonProperty("2. Смещение панели при встраивании в меню (RServerMenu)")]
+            public float EmbedOffsetX { get; set; } = 103.0f;
 
-            [JsonProperty("3. Ячейка под предметы")]
-            public UIDesignElement ItemSlot { get; set; } =
-                new UIDesignElement
-                {
-                    ImageName = "item_slot",
-                    Width = 120,
-                    Height = 120,
-                    OffsetX = 0,
-                    OffsetY = 0,
-                };
+            [JsonProperty("3. Смещение панели в автономном режиме (/store)")]
+            public float StandaloneOffsetX { get; set; } = 0.0f;
 
-            [JsonProperty("3.1. Ячейка фон чертежа (Аффикс)")]
-            public UIDesignElement ItemBlueprint { get; set; } =
-                new UIDesignElement
-                {
-                    ImageName = "item_blueprint",
-                    Width = 120,
-                    Height = 120,
-                    OffsetX = 0,
-                    OffsetY = 0,
-                };
+            [JsonProperty("4. Верхняя панель (Заголовок)")]
+            public HeaderPanelConfig HeaderPanel { get; set; } = new HeaderPanelConfig();
 
-            [JsonProperty("4. Ячейка фон успешно взятого предмета")]
-            public UIDesignElement ItemSuccess { get; set; } =
-                new UIDesignElement
-                {
-                    ImageName = "item_success",
-                    Width = 120,
-                    Height = 120,
-                    OffsetX = 0,
-                    OffsetY = 0,
-                };
+            [JsonProperty("5. Кнопка 'Забрать всё' в шапке")]
+            public TakeAllButtonConfig TakeAllButton { get; set; } = new TakeAllButtonConfig();
 
-            [JsonProperty("5. Ячейка фон заблокированного предмета")]
-            public UIDesignElement ItemBlocked { get; set; } =
-                new UIDesignElement
-                {
-                    ImageName = "block_wipe",
-                    Width = 120,
-                    Height = 120,
-                    OffsetX = 0,
-                    OffsetY = 0,
-                };
+            [JsonProperty("6. Нижняя панель (Контент)")]
+            public ContentPanelConfig ContentPanel { get; set; } = new ContentPanelConfig();
 
-            [JsonProperty("6. Ячейка фон нехватки места")]
-            public UIDesignElement ItemNoSpace { get; set; } =
-                new UIDesignElement
-                {
-                    ImageName = "item_nospace", // The user can change this to whatever their red error image is
-                    Width = 120,
-                    Height = 120,
-                    OffsetX = 0,
-                    OffsetY = 0,
-                };
+            [JsonProperty("7. Сетка корзины (Карточки товаров)")]
+            public CartGridConfig CartGrid { get; set; } = new CartGridConfig();
 
-            [JsonProperty("7. Кнопка Забрать всё")]
-            public UIDesignElement TakeAllButton { get; set; } =
-                new UIDesignElement
-                {
-                    ImageName = "take_all",
-                    Width = 40,
-                    Height = 40,
-                    OffsetX = -330f,
-                    OffsetY = -285f,
-                };
-
-            [JsonProperty("8. Иконка корзины (HUD)")]
-            public UIDesignElement CartIcon { get; set; } =
-                new UIDesignElement
-                {
-                    ImageName = "store",
-                    Width = 40f,
-                    Height = 40f,
-                    OffsetX = -615f,
-                    OffsetY = 340f,
-                };
+            [JsonProperty("8. Иконка корзины на экране (HUD)")]
+            public CartHudConfig CartHud { get; set; } = new CartHudConfig();
+            #endregion
         }
 
-        private class UIDesignElement
+        private class HeaderPanelConfig
         {
-            [JsonProperty("Название файла")]
-            public string ImageName { get; set; }
+            [JsonProperty("Высота")]
+            public float Height { get; set; } = 50.0f;
 
             [JsonProperty("Ширина")]
-            public float Width { get; set; }
+            public float Width { get; set; } = 699.0f;
+
+            [JsonProperty("Вверх/вниз")]
+            public float OffsetY { get; set; } = 226.5f;
+
+            [JsonProperty("Цвет фона")]
+            public string BgColor { get; set; } = "0.45 0.46 0.46 0.78";
+
+            [JsonProperty("Цвет текста заголовка")]
+            public string TitleColor { get; set; } = "0.25 0.69 1 1";
+
+            [JsonProperty("Размер шрифта заголовка")]
+            public int TitleSize { get; set; } = 20;
+
+            [JsonProperty("Отступ заголовка слева")]
+            public float TitlePaddingLeft { get; set; } = 15.0f;
+
+            [JsonProperty("Отступ заголовка справа")]
+            public float TitlePaddingRight { get; set; } = 170.0f;
+        }
+
+        private class TakeAllButtonConfig
+        {
+            [JsonProperty("Высота")]
+            public float Height { get; set; } = 30.0f;
+
+            [JsonProperty("Ширина")]
+            public float Width { get; set; } = 140.0f;
+
+            [JsonProperty("Вверх/вниз")]
+            public float OffsetY { get; set; } = 0.0f;
+
+            [JsonProperty("Влево/вправо")]
+            public float OffsetX { get; set; } = -10.0f;
+
+            [JsonProperty("Цвет фона")]
+            public string BgColor { get; set; } = "0.76 0.43 0.20 0.95";
+
+            [JsonProperty("Цвет текста")]
+            public string TextColor { get; set; } = "1 1 1 1";
+
+            [JsonProperty("Размер шрифта")]
+            public int FontSize { get; set; } = 13;
+        }
+
+        private class ContentPanelConfig
+        {
+            [JsonProperty("Высота")]
+            public float Height { get; set; } = 444.0f;
+
+            [JsonProperty("Ширина")]
+            public float Width { get; set; } = 699.0f;
+
+            [JsonProperty("Вверх/вниз")]
+            public float OffsetY { get; set; } = -30.5f;
+
+            [JsonProperty("Цвет фона")]
+            public string BgColor { get; set; } = "0.45 0.46 0.46 0.78";
+        }
+
+        private class CartGridConfig
+        {
+            [JsonProperty("Сетка - Внутренний отступ")]
+            public float Padding { get; set; } = 10.0f;
+
+            [JsonProperty("Количество колонок")]
+            public int Columns { get; set; } = 5;
+
+            [JsonProperty("Карточка - Ширина")]
+            public float CardWidth { get; set; } = 126.0f;
+
+            [JsonProperty("Карточка - Высота")]
+            public float CardHeight { get; set; } = 135.0f;
+
+            [JsonProperty("Карточка - Отступ по горизонтали (X)")]
+            public float GapX { get; set; } = 8.0f;
+
+            [JsonProperty("Карточка - Отступ по вертикали (Y)")]
+            public float GapY { get; set; } = 8.0f;
+
+            [JsonProperty("Карточка (Обычная) - Цвет фона")]
+            public string CardBgColor { get; set; } = "0.18 0.20 0.20 0.90";
+
+            [JsonProperty("Карточка (Чертеж) - URL изображения чертежа")]
+            public string BlueprintIconUrl { get; set; } =
+                "https://pic.survivalhost.org/images/2026/08/25/blueprint.png";
+
+            [JsonProperty("Карточка (Успешно взято) - Цвет фона")]
+            public string SuccessBgColor { get; set; } = "0.15 0.35 0.15 0.92";
+
+            [JsonProperty("Карточка (Заблокировано) - Цвет фона")]
+            public string BlockedBgColor { get; set; } = "0.35 0.15 0.15 0.92";
+
+            [JsonProperty("Карточка - Цвет текста названия")]
+            public string TitleColor { get; set; } = "1 1 1 1";
+
+            [JsonProperty("Карточка - Размер шрифта названия")]
+            public int TitleFontSize { get; set; } = 11;
+
+            [JsonProperty("Карточка - Цвет текста количества")]
+            public string CountColor { get; set; } = "0.63 0.89 0.18 1.0";
+
+            [JsonProperty("Карточка - Размер шрифта количества")]
+            public int CountFontSize { get; set; } = 12;
+
+            [JsonProperty("Иконка предмета - Размер")]
+            public float ImageSize { get; set; } = 80.0f;
+
+            [JsonProperty("Иконка предмета - Смещение по Y внутри карточки")]
+            public float ImageOffsetY { get; set; } = 0.0f;
+        }
+
+        private class CartHudConfig
+        {
+            [JsonProperty("Включить иконку HUD")]
+            public bool Enabled { get; set; } = true;
+
+            [JsonProperty("URL изображения")]
+            public string IconUrl { get; set; } =
+                "https://pic.survivalhost.org/images/2026/08/25/store.png";
 
             [JsonProperty("Высота")]
-            public float Height { get; set; }
+            public float Height { get; set; } = 40.0f;
 
-            [JsonProperty("Смещение Влево/Вправо (от центра X)")]
-            public float OffsetX { get; set; }
+            [JsonProperty("Ширина")]
+            public float Width { get; set; } = 40.0f;
 
-            [JsonProperty("Смещение Вверх/Вниз (от центра Y)")]
-            public float OffsetY { get; set; }
+            [JsonProperty("Вверх/вниз")]
+            public float OffsetY { get; set; } = 340.0f;
+
+            [JsonProperty("Влево/вправо")]
+            public float OffsetX { get; set; } = -615.0f;
         }
 
         protected override void LoadConfig()
@@ -216,13 +267,19 @@ namespace Oxide.Plugins
         protected override void LoadDefaultConfig()
         {
             _config = new Configuration();
-            _config.WipeBlocks.Add(new WipeBlockItem { Name = "", ItemId = "", BlockHours = 24f });
+            _config.WipeBlocks.Add(
+                new WipeBlockItem
+                {
+                    Name = "",
+                    ItemId = "",
+                    BlockHours = 24f,
+                }
+            );
         }
 
         protected override void SaveConfig() => Config.WriteObject(_config);
 
         #endregion
-
 
         #region Hooks & Setup
 
@@ -230,30 +287,25 @@ namespace Oxide.Plugins
         {
             foreach (var player in BasePlayer.activePlayerList)
             {
-                CuiHelper.DestroyUi(player, UIName);
+                DestroyPlayerUi(player);
                 DestroyHUD(player);
             }
         }
 
         private void OnServerInitialized(bool serverInitialized = false)
         {
-            // Красивый вывод информации о плагине в консоль
             Puts($"Загрузка плагина RSurvivalStore v{Version}");
             Puts("==================================================");
-            Puts("          Plugin by RustInnovate                        ");
+            Puts("          Plugin by RustInnovate                  ");
             Puts("--------------------------------------------------");
-            Puts("  VK: vk.com/rustinnovate                    ");
-            Puts("  Discord: discord.gg/e244z6aGs7                         ");
-            Puts("  Telegram: t.me/RobinPlay                    ");
+            Puts("  VK: vk.com/rustinnovate                         ");
+            Puts("  Discord: discord.gg/e244z6aGs7                  ");
+            Puts("  Telegram: t.me/RobinPlay                        ");
             Puts("==================================================");
-            if (!LoadImagesToMemory())
-            {
-                PrintWarning(
-                    "[RUS] Внимание! Отсутствуют обязательные изображения в data/RSystem/RSurvivalStore/Images/!\n"
-                        + "[EN] Warning! Missing required images in data/RSystem/RSurvivalStore/Images/!"
-                );
-                return;
-            }
+
+            // CHANGE: Загрузка иконки HUD и изображения чертежа по URL
+            DownloadHudIcon();
+            DownloadBlueprintIcon();
 
             if (
                 string.IsNullOrEmpty(_config.Settings.SiteID)
@@ -262,7 +314,7 @@ namespace Oxide.Plugins
             {
                 PrintWarning(
                     "[RUS] Плагин не настроен. Пожалуйста, используйте 'rsurvivalstore.setup <SiteID> <SiteKey>' в RCON.\n"
-                        + "[EN] Plugin is not configured. Please use 'rsurvivalstore.setup <SiteID> <SiteKey>' in RCON."
+                        + "[EN] Plugin is not configured. Please use 'rsurvivalstore.setup <SiteID> <SiteKey>' в RCON."
                 );
                 return;
             }
@@ -305,60 +357,120 @@ namespace Oxide.Plugins
             }
         }
 
-        private bool LoadImagesToMemory()
+        // CHANGE: Метод загрузки и кэширования иконки корзины HUD по URL
+        private void DownloadHudIcon()
         {
-            _imageCache.Clear();
-            string imageDir = Interface.Oxide.DataDirectory + "/RSystem/RSurvivalStore/Images/";
+            var hudCfg = _config?.UI?.CartHud;
+            if (hudCfg == null || !hudCfg.Enabled || string.IsNullOrEmpty(hudCfg.IconUrl))
+                return;
 
-            if (!Directory.Exists(imageDir))
+            string cacheDir = Path.Combine(
+                Interface.Oxide.DataDirectory,
+                "RSystem",
+                "RSurvivalStore",
+                "ImageCache"
+            );
+            if (!Directory.Exists(cacheDir))
+                Directory.CreateDirectory(cacheDir);
+
+            string fileName = "hud_cart_" + hudCfg.IconUrl.GetHashCode().ToString() + ".png";
+            string localPath = Path.Combine(cacheDir, fileName);
+
+            if (File.Exists(localPath))
             {
-                Directory.CreateDirectory(imageDir);
-            }
-
-            string[] imagesToLoad =
-            {
-                _config.Design.Header.ImageName,
-                _config.Design.MainBg.ImageName,
-                _config.Design.ItemSlot.ImageName,
-                _config.Design.ItemBlueprint.ImageName,
-                _config.Design.ItemSuccess.ImageName,
-                _config.Design.ItemBlocked.ImageName,
-                _config.Design.ItemNoSpace.ImageName,
-                _config.Design.TakeAllButton.ImageName,
-                _config.Design.CartIcon.ImageName,
-            };
-
-            bool allExist = true;
-
-            foreach (var img in imagesToLoad)
-            {
-                if (string.IsNullOrEmpty(img))
-                    continue;
-
-                string fileName = img.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
-                    ? img
-                    : img + ".png";
-                string path = Path.Combine(imageDir, fileName);
-                if (File.Exists(path))
+                try
                 {
-                    byte[] data = File.ReadAllBytes(path);
+                    byte[] data = File.ReadAllBytes(localPath);
                     uint id = FileStorage.server.Store(
                         data,
                         FileStorage.Type.png,
                         CommunityEntity.ServerInstance.net.ID
                     );
-                    _imageCache[img] = id.ToString();
+                    _hudIconPngId = id.ToString();
+                    return;
                 }
-                else
+                catch (Exception ex)
                 {
                     PrintError(
-                        $"Отсутствует необходимое изображение: data/RSystem/RSurvivalStore/Images/{fileName}"
+                        $"[RSurvivalStore] Ошибка загрузки закэшированной иконки HUD: {ex.Message}"
                     );
-                    allExist = false;
                 }
             }
 
-            return allExist;
+            ServerMgr.Instance.StartCoroutine(
+                DownloadImageCoroutine(
+                    hudCfg.IconUrl,
+                    localPath,
+                    "hud_cart",
+                    () =>
+                    {
+                        if (_imageCache.TryGetValue("hud_cart", out string pngId))
+                        {
+                            _hudIconPngId = pngId;
+                            foreach (var p in BasePlayer.activePlayerList)
+                            {
+                                DrawHUD(p);
+                            }
+                        }
+                    }
+                )
+            );
+        }
+
+        // CHANGE: Метод загрузки и кэширования изображения чертежа по URL
+        private void DownloadBlueprintIcon()
+        {
+            var gridCfg = _config?.UI?.CartGrid;
+            if (gridCfg == null || string.IsNullOrEmpty(gridCfg.BlueprintIconUrl))
+                return;
+
+            string cacheDir = Path.Combine(
+                Interface.Oxide.DataDirectory,
+                "RSystem",
+                "RSurvivalStore",
+                "ImageCache"
+            );
+            if (!Directory.Exists(cacheDir))
+                Directory.CreateDirectory(cacheDir);
+
+            string fileName = "bp_" + gridCfg.BlueprintIconUrl.GetHashCode().ToString() + ".png";
+            string localPath = Path.Combine(cacheDir, fileName);
+
+            if (File.Exists(localPath))
+            {
+                try
+                {
+                    byte[] data = File.ReadAllBytes(localPath);
+                    uint id = FileStorage.server.Store(
+                        data,
+                        FileStorage.Type.png,
+                        CommunityEntity.ServerInstance.net.ID
+                    );
+                    _blueprintIconPngId = id.ToString();
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    PrintError(
+                        $"[RSurvivalStore] Ошибка загрузки закэшированной иконки чертежа: {ex.Message}"
+                    );
+                }
+            }
+
+            ServerMgr.Instance.StartCoroutine(
+                DownloadImageCoroutine(
+                    gridCfg.BlueprintIconUrl,
+                    localPath,
+                    "blueprint_icon",
+                    () =>
+                    {
+                        if (_imageCache.TryGetValue("blueprint_icon", out string pngId))
+                        {
+                            _blueprintIconPngId = pngId;
+                        }
+                    }
+                )
+            );
         }
 
         [ConsoleCommand("rsurvivalstore.setup")]
@@ -366,14 +478,6 @@ namespace Oxide.Plugins
         {
             if (arg.Connection != null)
                 return;
-
-            if (!LoadImagesToMemory())
-            {
-                Puts(
-                    "Ошибка: Отсутствуют изображения в data/RSystem/RSurvivalStore/Images/. Загрузите их перед настройкой!"
-                );
-                return;
-            }
 
             if (!arg.HasArgs(2))
             {
@@ -517,57 +621,111 @@ namespace Oxide.Plugins
         #region UI & Commands
 
         private const string UIName = "RSurvivalStoreUI";
+        private const string LayerBg = "RSurvivalStore.Bg";
+        private const string LayerStatic = "RSurvivalStore.Static";
+        private const string LayerHeader = "RSurvivalStore.Header";
+        private const string LayerContent = "RSurvivalStore.Content";
         private const string HUDName = "RSurvivalStoreHUD";
+
+        private void DestroyPlayerUi(BasePlayer player)
+        {
+            if (player == null)
+                return;
+
+            _activeAddonParent.Remove(player.userID);
+            CuiHelper.DestroyUi(player, UIName);
+            CuiHelper.DestroyUi(player, LayerBg);
+            CuiHelper.DestroyUi(player, LayerStatic);
+            CuiHelper.DestroyUi(player, LayerHeader);
+            CuiHelper.DestroyUi(player, LayerContent);
+            CuiHelper.DestroyUi(player, UIName + "_TakeAll");
+            CuiHelper.DestroyUi(player, UIName + "_Content");
+            CuiHelper.DestroyUi(player, UIName + "_Empty");
+        }
 
         private void DrawHUD(BasePlayer player)
         {
             if (player == null || !player.IsConnected)
                 return;
+
             var rmenu = plugins.Find("RServerMenu");
             if (rmenu != null && rmenu.IsLoaded)
                 return;
 
-            var cartCfg = _config.Design.CartIcon;
-            if (
-                cartCfg == null
-                || string.IsNullOrEmpty(cartCfg.ImageName)
-                || !_imageCache.ContainsKey(cartCfg.ImageName)
-            )
+            var cartCfg = _config?.UI?.CartHud;
+            if (cartCfg == null || !cartCfg.Enabled)
                 return;
 
             CuiHelper.DestroyUi(player, HUDName);
 
             CuiElementContainer container = new CuiElementContainer();
-            container.Add(
-                new CuiElement
-                {
-                    Parent = "Hud",
-                    Name = HUDName,
-                    Components =
+
+            float halfW = cartCfg.Width / 2f;
+            float halfH = cartCfg.Height / 2f;
+            float xMin = cartCfg.OffsetX - halfW;
+            float xMax = cartCfg.OffsetX + halfW;
+            float yMin = cartCfg.OffsetY - halfH;
+            float yMax = cartCfg.OffsetY + halfH;
+
+            // CHANGE: Если изображение по ссылке загружено - используем CuiRawImageComponent, иначе fallback кнопку
+            if (!string.IsNullOrEmpty(_hudIconPngId))
+            {
+                container.Add(
+                    new CuiElement
                     {
-                        new CuiRawImageComponent { Png = _imageCache[cartCfg.ImageName] },
-                        new CuiRectTransformComponent
+                        Parent = "Hud",
+                        Name = HUDName,
+                        Components =
+                        {
+                            new CuiRawImageComponent { Png = _hudIconPngId },
+                            new CuiRectTransformComponent
+                            {
+                                AnchorMin = "0.5 0.5",
+                                AnchorMax = "0.5 0.5",
+                                OffsetMin =
+                                    $"{xMin.ToString(System.Globalization.CultureInfo.InvariantCulture)} {yMin.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                                OffsetMax =
+                                    $"{xMax.ToString(System.Globalization.CultureInfo.InvariantCulture)} {yMax.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                            },
+                        },
+                    }
+                );
+            }
+            else
+            {
+                container.Add(
+                    new CuiPanel
+                    {
+                        Image = { Color = "0.76 0.43 0.20 0.95" },
+                        RectTransform =
                         {
                             AnchorMin = "0.5 0.5",
                             AnchorMax = "0.5 0.5",
-                            OffsetMin = GetOffset(
-                                cartCfg.OffsetX,
-                                cartCfg.OffsetY,
-                                cartCfg.Width,
-                                cartCfg.Height,
-                                false
-                            ),
-                            OffsetMax = GetOffset(
-                                cartCfg.OffsetX,
-                                cartCfg.OffsetY,
-                                cartCfg.Width,
-                                cartCfg.Height,
-                                true
-                            ),
+                            OffsetMin =
+                                $"{xMin.ToString(System.Globalization.CultureInfo.InvariantCulture)} {yMin.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                            OffsetMax =
+                                $"{xMax.ToString(System.Globalization.CultureInfo.InvariantCulture)} {yMax.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                         },
                     },
-                }
-            );
+                    "Hud",
+                    HUDName
+                );
+
+                container.Add(
+                    new CuiLabel
+                    {
+                        Text =
+                        {
+                            Text = "🛒",
+                            FontSize = 18,
+                            Align = TextAnchor.MiddleCenter,
+                            Color = "1 1 1 1",
+                        },
+                        RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                    },
+                    HUDName
+                );
+            }
 
             container.Add(
                 new CuiButton
@@ -620,9 +778,24 @@ namespace Oxide.Plugins
             OpenShopUI(player);
         }
 
-        [HookMethod("OpenAddonUI")]
-        public void OpenAddonUI(BasePlayer player, string parentName)
+        [HookMethod("DrawEmbedUI_Fixed")]
+        public void DrawEmbedUI_Fixed(BasePlayer player, string parentPanel = null)
         {
+            OpenAddonUI(player, parentPanel);
+        }
+
+        [HookMethod("DrawEmbedUI")]
+        public void DrawEmbedUI(BasePlayer player, string parentPanel = null)
+        {
+            OpenAddonUI(player, parentPanel);
+        }
+
+        [HookMethod("OpenAddonUI")]
+        public void OpenAddonUI(BasePlayer player, string parentName = null)
+        {
+            if (player == null || !player.IsConnected)
+                return;
+
             if (_config.Settings.BlockInEnemyTC && player.IsBuildingBlocked())
             {
                 ShowGameTip(player, Lang("BlockedInTC", player.UserIDString), 2);
@@ -641,8 +814,27 @@ namespace Oxide.Plugins
                 return;
             }
 
-            _activeAddonParent[player.userID] = parentName;
+            _activeAddonParent[player.userID] = !string.IsNullOrEmpty(parentName)
+                ? parentName
+                : "Overlay";
             OpenShopUI(player);
+        }
+
+        // CHANGE: Универсальный хук закрытия для RServerMenu
+        [HookMethod("CloseEmbedUI")]
+        public void CloseEmbedUI(BasePlayer player)
+        {
+            if (player == null)
+                return;
+            DestroyPlayerUi(player);
+        }
+
+        [HookMethod("CloseAddonUI")]
+        public void CloseAddonUI(BasePlayer player)
+        {
+            if (player == null)
+                return;
+            DestroyPlayerUi(player);
         }
 
         private bool IsPlayerRaidBlocked(BasePlayer player)
@@ -716,37 +908,39 @@ namespace Oxide.Plugins
         {
             if (arg.Player() != null)
             {
-                CuiHelper.DestroyUi(arg.Player(), UIName);
-                _activeAddonParent.Remove(arg.Player().userID);
+                DestroyPlayerUi(arg.Player());
             }
         }
 
         private void OpenShopUI(BasePlayer player)
         {
+            if (player == null || !player.IsConnected)
+                return;
+
             if (!_isRegistered)
             {
                 Player.Message(player, Lang("NotConfigured", player.UserIDString));
                 return;
             }
 
-            if (_imageCache.Count < 4)
+            bool isEmbedded = _activeAddonParent.ContainsKey(player.userID);
+
+            // CHANGE: Мгновенная отрисовка каркаса и кэшированных предметов (устраняет мерцание и задержку при переключении категорий)
+            JArray cachedItems = null;
+            if (_playerItems.TryGetValue(player.UserIDString, out cachedItems))
             {
-                Player.Message(
-                    player,
-                    "Магазин временно недоступен (отсутствуют изображения интерфейса)."
-                );
-                return;
+                DrawUI(player, cachedItems, false);
+            }
+            else
+            {
+                DrawUI(player, null, false);
             }
 
             var data = new Dictionary<string, object>
             {
                 ["siteId"] = _config.Settings.SiteID,
                 ["clientSid"] = player.UserIDString,
-                ["criteria"] = new Dictionary<string, object>
-                {
-                    ["_start"] = 0,
-                    ["_limit"] = 100, // Fetch up to 100 items for the scroll view
-                },
+                ["criteria"] = new Dictionary<string, object> { ["_start"] = 0, ["_limit"] = 100 },
             };
 
             SendApiRequest(
@@ -754,6 +948,13 @@ namespace Oxide.Plugins
                 data,
                 (code, response) =>
                 {
+                    if (player == null || !player.IsConnected)
+                        return;
+
+                    // CHANGE: Если меню было закрыто или переключена вкладка во время ответа API - прерываем отрисовку
+                    if (isEmbedded && !_activeAddonParent.ContainsKey(player.userID))
+                        return;
+
                     if (code != 200 || string.IsNullOrEmpty(response))
                     {
                         DrawUI(player, null, true);
@@ -762,9 +963,6 @@ namespace Oxide.Plugins
 
                     try
                     {
-                        // DEBUG LOG FOR API RESPONSE
-                        // Puts($"[DEBUG] getInventory response for {player.UserIDString}: {response}");
-
                         JObject json = JObject.Parse(response);
 
                         string errorMsg = json["error_msg"]?.ToString();
@@ -801,6 +999,15 @@ namespace Oxide.Plugins
                             items,
                             () =>
                             {
+                                if (player == null || !player.IsConnected)
+                                    return;
+                                if (isEmbedded && !_activeAddonParent.ContainsKey(player.userID))
+                                    return;
+
+                                // CHANGE: Если список предметов идентичен уже отрисованному кэшу, пропускаем перерисовку для исключения мерцания
+                                if (cachedItems != null && JToken.DeepEquals(cachedItems, items))
+                                    return;
+
                                 DrawUI(player, items, false);
                             }
                         );
@@ -882,11 +1089,6 @@ namespace Oxide.Plugins
                 return;
             }
 
-            Player.Message(
-                player,
-                "Кэширование изображений товаров, пожалуйста подождите несколько секунд..."
-            );
-
             int total = pendingDownloads.Count;
             int completed = 0;
             Action itemCompleted = () =>
@@ -948,25 +1150,52 @@ namespace Oxide.Plugins
             }
         }
 
-        private string GetOffset(
-            float offsetX,
-            float offsetY,
-            float width,
-            float height,
-            bool isMax
-        )
+        private bool CheckIsBlueprint(JObject item)
         {
-            float halfW = width / 2f;
-            float halfH = height / 2f;
+            if (item == null)
+                return false;
 
-            if (isMax)
+            string title = (string)item["title"] ?? "";
+            if (
+                title.IndexOf("чертеж", StringComparison.OrdinalIgnoreCase) >= 0
+                || title.IndexOf("чертёж", StringComparison.OrdinalIgnoreCase) >= 0
+                || title.IndexOf("blueprint", StringComparison.OrdinalIgnoreCase) >= 0
+                || title.IndexOf("[ч]", StringComparison.OrdinalIgnoreCase) >= 0
+                || title.IndexOf("[b]", StringComparison.OrdinalIgnoreCase) >= 0
+                || title.IndexOf("[bp]", StringComparison.OrdinalIgnoreCase) >= 0
+            )
             {
-                return $"{offsetX + halfW} {offsetY + halfH}";
+                return true;
             }
-            else
+
+            if (item["is_blueprint"] != null && item["is_blueprint"].Value<bool>())
+                return true;
+            if (item["isBlueprint"] != null && item["isBlueprint"].Value<bool>())
+                return true;
+
+            JArray equips = (JArray)item["content"]?["equips"];
+            if (equips != null)
             {
-                return $"{offsetX - halfW} {offsetY - halfH}";
+                foreach (JToken t in equips)
+                {
+                    if (t is JObject equip)
+                    {
+                        if (equip["is_blueprint"] != null && equip["is_blueprint"].Value<bool>())
+                            return true;
+                        if (equip["isBlueprint"] != null && equip["isBlueprint"].Value<bool>())
+                            return true;
+                        if (equip["info"] is JObject info)
+                        {
+                            if (info["is_blueprint"] != null && info["is_blueprint"].Value<bool>())
+                                return true;
+                            if (info["isBlueprint"] != null && info["isBlueprint"].Value<bool>())
+                                return true;
+                        }
+                    }
+                }
             }
+
+            return false;
         }
 
         private void DrawSingleItemSlot(BasePlayer player, string targetSlotId, bool remove)
@@ -993,23 +1222,60 @@ namespace Oxide.Plugins
             CuiHelper.DestroyUi(player, itemPanel);
 
             if (remove)
+            {
+                // CHANGE: Проверка, остались ли еще предметы в корзине; если нет - отрисовать надпись "Ваша корзина пуста."
+                int validRemaining = 0;
+                foreach (JToken t in items)
+                {
+                    if (t is JObject obj && (int)(obj["count"] ?? 0) > 0)
+                        validRemaining++;
+                }
+
+                if (validRemaining == 0)
+                {
+                    CuiHelper.DestroyUi(player, UIName + "_TakeAll");
+                    CuiHelper.DestroyUi(player, contentName);
+                    CuiHelper.DestroyUi(player, UIName + "_Empty");
+
+                    var emptyContainer = new CuiElementContainer();
+                    string emptyPanel = UIName + "_Empty";
+                    emptyContainer.Add(
+                        new CuiPanel
+                        {
+                            Image = { Color = "0 0 0 0" },
+                            RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                        },
+                        LayerContent,
+                        emptyPanel
+                    );
+
+                    emptyContainer.Add(
+                        new CuiLabel
+                        {
+                            Text =
+                            {
+                                Text = Lang("Empty", player.UserIDString),
+                                FontSize = 18,
+                                Align = TextAnchor.MiddleCenter,
+                                Color = "0.8 0.8 0.8 1",
+                                Font = "robotocondensed-bold.ttf",
+                            },
+                            RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                        },
+                        emptyPanel
+                    );
+
+                    CuiHelper.AddUi(player, emptyContainer);
+                }
                 return;
+            }
 
-            var slotCfg = _config.Design.ItemSlot;
-            var successCfg = _config.Design.ItemSuccess;
-            var mainCfg = _config.Design.MainBg;
+            var gridCfg = _config.UI.CartGrid;
+            int columns = gridCfg.Columns > 0 ? gridCfg.Columns : 5;
 
-            float gapX = 15f;
-            float gapY = 40f;
-            int columns = UnityEngine.Mathf.FloorToInt(
-                (mainCfg.Width - 20f) / (slotCfg.Width + gapX)
-            );
-            if (columns < 1)
-                columns = 1;
-
-            float totalGridWidth = (columns * slotCfg.Width) + ((columns - 1) * gapX);
-            float startX = -(totalGridWidth / 2f) + (slotCfg.Width / 2f);
-            float startY = -(slotCfg.Height / 2f) - 30f;
+            float totalGridWidth = (columns * gridCfg.CardWidth) + ((columns - 1) * gridCfg.GapX);
+            float startX = -(totalGridWidth / 2f) + (gridCfg.CardWidth / 2f);
+            float startY = -(gridCfg.CardHeight / 2f) - gridCfg.Padding;
 
             JObject item = (JObject)items[index];
             string slotId = (string)item["_id"];
@@ -1018,150 +1284,148 @@ namespace Oxide.Plugins
             int count = (int)item["count"];
             string logoLink = (string)item["logoLink"];
 
-            bool isBlueprint =
-                title != null
-                && (
-                    title.IndexOf("чертеж", StringComparison.OrdinalIgnoreCase) >= 0
-                    || title.IndexOf("чертёж", StringComparison.OrdinalIgnoreCase) >= 0
-                    || title.IndexOf("blueprint", StringComparison.OrdinalIgnoreCase) >= 0
-                    || title.IndexOf("[ч]", StringComparison.OrdinalIgnoreCase) >= 0
-                    || title.IndexOf("[b]", StringComparison.OrdinalIgnoreCase) >= 0
-                );
+            bool isBlueprint = CheckIsBlueprint(item);
 
             bool hasState = _slotStates.TryGetValue(slotId, out string slotState);
             bool isNoSpace = hasState && slotState.StartsWith("nospace");
-            var activeCfg = slotCfg;
-            string bgImageName = isBlueprint
-                ? _config.Design.ItemBlueprint.ImageName
-                : slotCfg.ImageName;
+            bool isBlocked = IsItemBlocked(itemId, out float remaining);
 
-            if (hasState)
-            {
-                if (slotState == "success")
-                {
-                    activeCfg = successCfg;
-                    bgImageName = successCfg.ImageName;
-                }
-                else if (isNoSpace)
-                {
-                    activeCfg = _config.Design.ItemNoSpace;
-                    bgImageName = _config.Design.ItemNoSpace.ImageName;
-                }
-            }
+            string cardBg = gridCfg.CardBgColor;
+            if (hasState && slotState == "success")
+                cardBg = gridCfg.SuccessBgColor;
+            else if (isBlocked)
+                cardBg = gridCfg.BlockedBgColor;
 
             int row = index / columns;
             int col = index % columns;
-            float currentX = startX + (col * (slotCfg.Width + gapX));
-            float currentY = startY - (row * (slotCfg.Height + gapY));
+            float currentX = startX + (col * (gridCfg.CardWidth + gridCfg.GapX));
+            float currentY = startY - (row * (gridCfg.CardHeight + gridCfg.GapY));
+
+            float halfW = gridCfg.CardWidth / 2f;
+            float halfH = gridCfg.CardHeight / 2f;
+            float minX = currentX - halfW;
+            float maxX = currentX + halfW;
+            float minY = currentY - halfH;
+            float maxY = currentY + halfH;
 
             CuiElementContainer container = new CuiElementContainer();
 
+            // Card Background (Pure Vector Panel)
             container.Add(
-                new CuiElement
+                new CuiPanel
                 {
-                    Parent = contentName,
-                    Name = itemPanel,
-                    Components =
+                    Image = { Color = cardBg },
+                    RectTransform =
                     {
-                        new CuiRawImageComponent
-                        {
-                            Png = _imageCache.ContainsKey(bgImageName)
-                                ? _imageCache[bgImageName]
-                                : "",
-                        },
-                        new CuiRectTransformComponent
-                        {
-                            AnchorMin = "0.5 1",
-                            AnchorMax = "0.5 1",
-                            OffsetMin = GetOffset(
-                                activeCfg.OffsetX + currentX,
-                                activeCfg.OffsetY + currentY,
-                                activeCfg.Width,
-                                activeCfg.Height,
-                                false
-                            ),
-                            OffsetMax = GetOffset(
-                                activeCfg.OffsetX + currentX,
-                                activeCfg.OffsetY + currentY,
-                                activeCfg.Width,
-                                activeCfg.Height,
-                                true
-                            ),
-                        },
+                        AnchorMin = "0.5 1",
+                        AnchorMax = "0.5 1",
+                        OffsetMin =
+                            $"{minX.ToString(System.Globalization.CultureInfo.InvariantCulture)} {minY.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                        OffsetMax =
+                            $"{maxX.ToString(System.Globalization.CultureInfo.InvariantCulture)} {maxY.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                     },
-                }
+                },
+                contentName,
+                itemPanel
             );
 
-            container.Add(
-                new CuiElement
-                {
-                    Parent = itemPanel,
-                    Name = itemPanel + "_Icon",
-                    Components =
-                    {
-                        new CuiRawImageComponent
-                        {
-                            Png = _imageCache.ContainsKey(logoLink) ? _imageCache[logoLink] : "",
-                        },
-                        new CuiRectTransformComponent
-                        {
-                            AnchorMin = "0.225 0.15",
-                            AnchorMax = "0.775 0.7",
-                        },
-                    },
-                }
-            );
-
+            // Item Title at the top
             container.Add(
                 new CuiLabel
                 {
                     Text =
                     {
                         Text = title,
-                        FontSize = 11,
-                        Align = TextAnchor.LowerCenter,
-                        Color = "1 1 1 1",
+                        FontSize = gridCfg.TitleFontSize,
+                        Align = TextAnchor.MiddleCenter,
+                        Color = gridCfg.TitleColor,
                         Font = "robotocondensed-bold.ttf",
                     },
-                    RectTransform =
-                    {
-                        AnchorMin = "-0.05 1.02",
-                        AnchorMax = "1.05 1.35",
-                        OffsetMin = "0 0",
-                        OffsetMax = "0 0",
-                    },
+                    RectTransform = { AnchorMin = "0.05 0.72", AnchorMax = "0.95 0.96" },
                 },
                 itemPanel
             );
 
+            float imgHalf = gridCfg.ImageSize / 2f;
+            float imgY = gridCfg.ImageOffsetY;
+
+            // CHANGE: Отрисовка изображения чертежа по URL на заднем плане предмета
+            if (isBlueprint && !string.IsNullOrEmpty(_blueprintIconPngId))
+            {
+                container.Add(
+                    new CuiElement
+                    {
+                        Parent = itemPanel,
+                        Name = itemPanel + "_Blueprint",
+                        Components =
+                        {
+                            new CuiRawImageComponent { Png = _blueprintIconPngId },
+                            new CuiRectTransformComponent
+                            {
+                                AnchorMin = "0.5 0.5",
+                                AnchorMax = "0.5 0.5",
+                                OffsetMin =
+                                    $"{(-imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)} {(imgY - imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                                OffsetMax =
+                                    $"{imgHalf.ToString(System.Globalization.CultureInfo.InvariantCulture)} {(imgY + imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                            },
+                        },
+                    }
+                );
+            }
+
+            // Item Icon (if downloaded)
+            if (
+                !string.IsNullOrEmpty(logoLink)
+                && _imageCache.TryGetValue(logoLink, out string logoPng)
+            )
+            {
+                container.Add(
+                    new CuiElement
+                    {
+                        Parent = itemPanel,
+                        Name = itemPanel + "_Icon",
+                        Components =
+                        {
+                            new CuiRawImageComponent { Png = logoPng },
+                            new CuiRectTransformComponent
+                            {
+                                AnchorMin = "0.5 0.5",
+                                AnchorMax = "0.5 0.5",
+                                OffsetMin =
+                                    $"{(-imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)} {(imgY - imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                                OffsetMax =
+                                    $"{imgHalf.ToString(System.Globalization.CultureInfo.InvariantCulture)} {(imgY + imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                            },
+                        },
+                    }
+                );
+            }
+
+            // Count at bottom right
             container.Add(
                 new CuiLabel
                 {
                     Text =
                     {
                         Text = $"x{count}",
-                        FontSize = 12,
+                        FontSize = gridCfg.CountFontSize,
                         Align = TextAnchor.LowerRight,
-                        Color = "1 1 1 1",
+                        Color = gridCfg.CountColor,
                         Font = "robotocondensed-bold.ttf",
                     },
-                    RectTransform =
-                    {
-                        AnchorMin = "0 0.05",
-                        AnchorMax = "0.92 0.25",
-                        OffsetMin = "0 0",
-                        OffsetMax = "0 0",
-                    },
+                    RectTransform = { AnchorMin = "0 0.05", AnchorMax = "0.92 0.28" },
                 },
                 itemPanel
             );
 
-            if (slotState == "success")
+            // Overlays (Success / NoSpace / Blocked)
+            if (hasState && slotState == "success")
             {
                 container.Add(
                     new CuiPanel
                     {
-                        Image = { Color = "0 0 0 0.75" },
+                        Image = { Color = gridCfg.SuccessBgColor },
                         RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                     },
                     itemPanel,
@@ -1173,12 +1437,12 @@ namespace Oxide.Plugins
                         Text =
                         {
                             Text = Lang("Taken", player.UserIDString),
-                            FontSize = 14,
+                            FontSize = 16,
                             Align = TextAnchor.MiddleCenter,
                             Color = "0.4 0.9 0.4 1",
                             Font = "robotocondensed-bold.ttf",
                         },
-                        RectTransform = { AnchorMin = "0 0.7", AnchorMax = "1 0.98" },
+                        RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                     },
                     $"{itemPanel}_Dim"
                 );
@@ -1189,7 +1453,7 @@ namespace Oxide.Plugins
                 container.Add(
                     new CuiPanel
                     {
-                        Image = { Color = "0 0 0 0" },
+                        Image = { Color = gridCfg.BlockedBgColor },
                         RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                     },
                     itemPanel,
@@ -1204,176 +1468,224 @@ namespace Oxide.Plugins
                                 Lang("NeedSlots", player.UserIDString),
                                 countNeeded
                             ),
-                            FontSize = 12,
+                            FontSize = 13,
                             Align = TextAnchor.MiddleCenter,
-                            Color = "1 1 1 1",
+                            Color = "1 0.7 0.7 1",
                             Font = "robotocondensed-bold.ttf",
                         },
-                        RectTransform = { AnchorMin = "0 0.7", AnchorMax = "1 0.98" },
+                        RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                     },
                     $"{itemPanel}_Dim"
                 );
             }
-            container.Add(
-                new CuiButton
-                {
-                    Button =
+            else if (isBlocked)
+            {
+                container.Add(
+                    new CuiPanel
                     {
-                        Color = "0 0 0 0",
-                        Command = $"rsurvivalstore.take {slotId} {itemId}",
+                        Image = { Color = gridCfg.BlockedBgColor },
+                        RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                     },
-                    Text = { Text = "" },
-                    RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
-                },
-                itemPanel
-            );
+                    itemPanel,
+                    $"{itemPanel}_Dim"
+                );
+                container.Add(
+                    new CuiElement
+                    {
+                        Parent = $"{itemPanel}_Dim",
+                        Components =
+                        {
+                            new CuiTextComponent
+                            {
+                                Text = "%TIME_LEFT%",
+                                FontSize = 14,
+                                Align = TextAnchor.MiddleCenter,
+                                Color = "1 0.8 0.2 1",
+                                Font = "robotocondensed-bold.ttf",
+                            },
+                            new CuiCountdownComponent
+                            {
+                                StartTime = (int)remaining,
+                                EndTime = 0,
+                                Step = 1,
+                                TimerFormat = Oxide
+                                    .Game
+                                    .Rust
+                                    .Cui
+                                    .TimerFormat
+                                    .DaysHoursMinutesSeconds,
+                            },
+                            new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" },
+                        },
+                    }
+                );
+            }
+            else
+            {
+                container.Add(
+                    new CuiButton
+                    {
+                        Button =
+                        {
+                            Color = "0 0 0 0",
+                            Command = $"rsurvivalstore.take {slotId} {itemId}",
+                        },
+                        Text = { Text = "" },
+                        RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                    },
+                    itemPanel
+                );
+            }
 
             CuiHelper.AddUi(player, container);
         }
 
         private void DrawUI(BasePlayer player, JArray items, bool isAuthError = false)
         {
+            if (player == null || !player.IsConnected)
+                return;
+
             if (items != null)
                 _playerItems[player.UserIDString] = items;
 
-            _activeAddonParent.TryGetValue(player.userID, out string parentName);
-            bool isAddon = !string.IsNullOrEmpty(parentName);
+            bool isEmbedded = _activeAddonParent.TryGetValue(player.userID, out string parentName);
+            string targetParent = isEmbedded
+                ? (!string.IsNullOrEmpty(parentName) ? parentName : "Overlay")
+                : "Overlay";
 
-            if (!isAddon)
-                CuiHelper.DestroyUi(player, UIName);
+            CuiHelper.DestroyUi(player, UIName);
+            CuiHelper.DestroyUi(player, LayerBg);
+            CuiHelper.DestroyUi(player, LayerStatic);
+            CuiHelper.DestroyUi(player, LayerHeader);
+            CuiHelper.DestroyUi(player, LayerContent);
+            CuiHelper.DestroyUi(player, UIName + "_TakeAll");
+            CuiHelper.DestroyUi(player, UIName + "_Content");
+            CuiHelper.DestroyUi(player, UIName + "_Empty");
 
-            CuiElementContainer container = new CuiElementContainer();
+            var mainContainer = new CuiElementContainer();
 
-            if (!isAddon)
+            if (!isEmbedded)
             {
-                // Invisible Background to block cursor
-                container.Add(
+                // Background overlay for standalone /store
+                mainContainer.Add(
                     new CuiPanel
                     {
                         Image =
                         {
-                            Color = "0 0 0 0.5",
+                            Color = _config.UI.MainBgColor,
                             Material = "assets/content/ui/uibackgroundblur.mat",
                         },
                         RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                         CursorEnabled = true,
                     },
                     "Overlay",
-                    UIName
+                    LayerBg
                 );
 
-                // Background Button (Closes UI when clicked)
-                container.Add(
+                mainContainer.Add(
                     new CuiButton
                     {
                         Button = { Color = "0 0 0 0", Command = "rsurvivalstore.close" },
                         Text = { Text = "" },
                         RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                     },
-                    UIName
+                    LayerBg
                 );
-            }
 
-            // --- Main Background ---
-            var mainCfg = _config.Design.MainBg;
-            string mainPanel = UIName + "_Main";
-            string actualParent = isAddon ? parentName : UIName;
-
-            container.Add(
-                new CuiElement
-                {
-                    Parent = actualParent,
-                    Name = mainPanel,
-                    Components =
-                    {
-                        isAddon
-                            ? new CuiImageComponent { Color = "0 0 0 0" }
-                            : new CuiRawImageComponent { Png = _imageCache[mainCfg.ImageName] }
-                                as ICuiComponent,
-                        new CuiRectTransformComponent
-                        {
-                            AnchorMin = isAddon ? "0 0" : "0.5 0.5",
-                            AnchorMax = isAddon ? "1 1" : "0.5 0.5",
-                            OffsetMin = isAddon
-                                ? "0 0"
-                                : GetOffset(
-                                    mainCfg.OffsetX,
-                                    mainCfg.OffsetY,
-                                    mainCfg.Width,
-                                    mainCfg.Height,
-                                    false
-                                ),
-                            OffsetMax = isAddon
-                                ? "0 0"
-                                : GetOffset(
-                                    mainCfg.OffsetX,
-                                    mainCfg.OffsetY,
-                                    mainCfg.Width,
-                                    mainCfg.Height,
-                                    true
-                                ),
-                        },
-                    },
-                }
-            );
-
-            // --- Header Background ---
-            if (!isAddon)
-            {
-                var headerCfg = _config.Design.Header;
-                string headerPanel = UIName + "_Header";
-
-                container.Add(
+                mainContainer.Add(
                     new CuiElement
                     {
-                        Parent = actualParent,
-                        Name = headerPanel,
+                        Parent = LayerBg,
+                        Name = LayerStatic,
                         Components =
                         {
-                            new CuiRawImageComponent { Png = _imageCache[headerCfg.ImageName] },
-                            new CuiRectTransformComponent
-                            {
-                                AnchorMin = "0.5 0.5",
-                                AnchorMax = "0.5 0.5",
-                                OffsetMin = GetOffset(
-                                    headerCfg.OffsetX,
-                                    headerCfg.OffsetY,
-                                    headerCfg.Width,
-                                    headerCfg.Height,
-                                    false
-                                ),
-                                OffsetMax = GetOffset(
-                                    headerCfg.OffsetX,
-                                    headerCfg.OffsetY,
-                                    headerCfg.Width,
-                                    headerCfg.Height,
-                                    true
-                                ),
-                            },
+                            new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" },
+                        },
+                    }
+                );
+            }
+            else
+            {
+                mainContainer.Add(
+                    new CuiElement
+                    {
+                        Parent = targetParent,
+                        Name = LayerBg,
+                        Components =
+                        {
+                            new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" },
                         },
                     }
                 );
 
-                // Title Text inside Header
-                container.Add(
-                    new CuiLabel
+                mainContainer.Add(
+                    new CuiElement
                     {
-                        Text =
+                        Parent = LayerBg,
+                        Name = LayerStatic,
+                        Components =
                         {
-                            Text = Lang("Title", player.UserIDString),
-                            FontSize = 24,
-                            Align = TextAnchor.MiddleCenter,
-                            Font = "robotocondensed-bold.ttf",
-                            Color = "1 1 1 1",
+                            new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" },
                         },
-                        RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
-                    },
-                    headerPanel
+                    }
                 );
             }
 
-            // Take All Button
-            var takeAllCfg = _config.Design.TakeAllButton;
+            float baseX = isEmbedded ? _config.UI.EmbedOffsetX : _config.UI.StandaloneOffsetX;
+
+            // 1. Верхняя панель (Заголовок)
+            var headerCfg = _config.UI.HeaderPanel;
+            float hW = headerCfg.Width;
+            float hH = headerCfg.Height;
+            float hY = headerCfg.OffsetY;
+            float hXmin = baseX - (hW / 2f);
+            float hXmax = baseX + (hW / 2f);
+            float hYmin = hY - (hH / 2f);
+            float hYmax = hY + (hH / 2f);
+
+            mainContainer.Add(
+                new CuiPanel
+                {
+                    RectTransform =
+                    {
+                        AnchorMin = "0.5 0.5",
+                        AnchorMax = "0.5 0.5",
+                        OffsetMin =
+                            $"{hXmin.ToString(System.Globalization.CultureInfo.InvariantCulture)} {hYmin.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                        OffsetMax =
+                            $"{hXmax.ToString(System.Globalization.CultureInfo.InvariantCulture)} {hYmax.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    },
+                    Image = { Color = headerCfg.BgColor },
+                },
+                LayerStatic,
+                LayerHeader
+            );
+
+            mainContainer.Add(
+                new CuiLabel
+                {
+                    RectTransform =
+                    {
+                        AnchorMin = "0 0",
+                        AnchorMax = "1 1",
+                        OffsetMin =
+                            $"{headerCfg.TitlePaddingLeft.ToString(System.Globalization.CultureInfo.InvariantCulture)} 0",
+                        OffsetMax =
+                            $"{(-headerCfg.TitlePaddingRight).ToString(System.Globalization.CultureInfo.InvariantCulture)} 0",
+                    },
+                    Text =
+                    {
+                        Text = Lang("Title", player.UserIDString),
+                        Align = TextAnchor.MiddleLeft,
+                        FontSize = headerCfg.TitleSize,
+                        Font = "robotocondensed-bold.ttf",
+                        Color = headerCfg.TitleColor,
+                    },
+                },
+                LayerHeader
+            );
+
+            // Кнопка "Забрать всё" в шапке (если предметов > 1)
             int validItemsCount = 0;
             if (items != null)
             {
@@ -1384,80 +1696,102 @@ namespace Oxide.Plugins
                 }
             }
 
-            if (
-                takeAllCfg != null
-                && !string.IsNullOrEmpty(takeAllCfg.ImageName)
-                && _imageCache.ContainsKey(takeAllCfg.ImageName)
-                && validItemsCount > 1
-            )
+            var takeAllCfg = _config.UI.TakeAllButton;
+            if (takeAllCfg != null && validItemsCount > 1)
             {
-                string takeAllPanel = UIName + "_TakeAll";
-                string takeAllParent = isAddon ? "RMenu.Content" : actualParent;
+                float tW = takeAllCfg.Width;
+                float tH = takeAllCfg.Height;
+                float tX = takeAllCfg.OffsetX;
+                float tY = takeAllCfg.OffsetY;
 
-                container.Add(
-                    new CuiElement
+                mainContainer.Add(
+                    new CuiPanel
                     {
-                        Parent = takeAllParent,
-                        Name = takeAllPanel,
-                        Components =
+                        Image = { Color = takeAllCfg.BgColor },
+                        RectTransform =
                         {
-                            new CuiRawImageComponent { Png = _imageCache[takeAllCfg.ImageName] },
-                            new CuiRectTransformComponent
-                            {
-                                AnchorMin = isAddon ? "0.91 0.942" : "0.5 0.5",
-                                AnchorMax = isAddon ? "0.91 0.942" : "0.5 0.5",
-                                OffsetMin = isAddon
-                                    ? "-14 -14"
-                                    : GetOffset(
-                                        takeAllCfg.OffsetX,
-                                        takeAllCfg.OffsetY,
-                                        takeAllCfg.Width,
-                                        takeAllCfg.Height,
-                                        false
-                                    ),
-                                OffsetMax = isAddon
-                                    ? "14 14"
-                                    : GetOffset(
-                                        takeAllCfg.OffsetX,
-                                        takeAllCfg.OffsetY,
-                                        takeAllCfg.Width,
-                                        takeAllCfg.Height,
-                                        true
-                                    ),
-                            },
+                            AnchorMin = "1 0.5",
+                            AnchorMax = "1 0.5",
+                            OffsetMin =
+                                $"{(tX - tW).ToString(System.Globalization.CultureInfo.InvariantCulture)} {(tY - (tH / 2f)).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                            OffsetMax =
+                                $"{tX.ToString(System.Globalization.CultureInfo.InvariantCulture)} {(tY + (tH / 2f)).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                         },
-                    }
+                    },
+                    LayerHeader,
+                    UIName + "_TakeAll"
                 );
 
-                container.Add(
+                mainContainer.Add(
+                    new CuiLabel
+                    {
+                        Text =
+                        {
+                            Text = Lang("TakeAll", player.UserIDString),
+                            FontSize = takeAllCfg.FontSize,
+                            Align = TextAnchor.MiddleCenter,
+                            Font = "robotocondensed-bold.ttf",
+                            Color = takeAllCfg.TextColor,
+                        },
+                        RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                    },
+                    UIName + "_TakeAll"
+                );
+
+                mainContainer.Add(
                     new CuiButton
                     {
                         Button = { Command = "rsurvivalstore.takeall", Color = "0 0 0 0" },
                         Text = { Text = "" },
                         RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                     },
-                    takeAllPanel
+                    UIName + "_TakeAll"
                 );
             }
 
-            // --- Content ---
-            // --- Content ---
+            // 2. Нижняя панель (Контент)
+            var contentCfg = _config.UI.ContentPanel;
+            float cW = contentCfg.Width;
+            float cH = contentCfg.Height;
+            float cY = contentCfg.OffsetY;
+            float cXmin = baseX - (cW / 2f);
+            float cXmax = baseX + (cW / 2f);
+            float cYmin = cY - (cH / 2f);
+            float cYmax = cY + (cH / 2f);
+
+            mainContainer.Add(
+                new CuiPanel
+                {
+                    RectTransform =
+                    {
+                        AnchorMin = "0.5 0.5",
+                        AnchorMax = "0.5 0.5",
+                        OffsetMin =
+                            $"{cXmin.ToString(System.Globalization.CultureInfo.InvariantCulture)} {cYmin.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                        OffsetMax =
+                            $"{cXmax.ToString(System.Globalization.CultureInfo.InvariantCulture)} {cYmax.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                    },
+                    Image = { Color = contentCfg.BgColor },
+                },
+                LayerStatic,
+                LayerContent
+            );
+
+            // Содержимое контента
             if (isAuthError)
             {
                 string emptyPanel = UIName + "_Empty";
-                container.Add(
-                    new CuiElement
+                mainContainer.Add(
+                    new CuiPanel
                     {
-                        Parent = mainPanel,
-                        Name = emptyPanel,
-                        Components =
-                        {
-                            new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" },
-                        },
-                    }
+                        Image = { Color = "0 0 0 0" },
+                        RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                    },
+                    LayerContent,
+                    emptyPanel
                 );
 
-                container.Add(
+                mainContainer.Add(
                     new CuiLabel
                     {
                         Text =
@@ -1472,7 +1806,7 @@ namespace Oxide.Plugins
                     emptyPanel
                 );
 
-                container.Add(
+                mainContainer.Add(
                     new CuiElement
                     {
                         Parent = emptyPanel,
@@ -1495,9 +1829,20 @@ namespace Oxide.Plugins
                     }
                 );
             }
-            else if (items == null || items.Count == 0)
+            else if (items == null || items.Count == 0 || validItemsCount == 0)
             {
-                container.Add(
+                string emptyPanel = UIName + "_Empty";
+                mainContainer.Add(
+                    new CuiPanel
+                    {
+                        Image = { Color = "0 0 0 0" },
+                        RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                    },
+                    LayerContent,
+                    emptyPanel
+                );
+
+                mainContainer.Add(
                     new CuiLabel
                     {
                         Text =
@@ -1506,54 +1851,50 @@ namespace Oxide.Plugins
                             FontSize = 18,
                             Align = TextAnchor.MiddleCenter,
                             Color = "0.8 0.8 0.8 1",
+                            Font = "robotocondensed-bold.ttf",
                         },
                         RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                     },
-                    mainPanel
+                    emptyPanel
                 );
             }
             else
             {
-                var slotCfg = _config.Design.ItemSlot;
-                var successCfg = _config.Design.ItemSuccess;
+                var gridCfg = _config.UI.CartGrid;
+                int columns = gridCfg.Columns > 0 ? gridCfg.Columns : 5;
 
-                string contentName = UIName + "_Content";
+                float totalGridWidth =
+                    (columns * gridCfg.CardWidth) + ((columns - 1) * gridCfg.GapX);
+                float startX = -(totalGridWidth / 2f) + (gridCfg.CardWidth / 2f);
+                float startY = -(gridCfg.CardHeight / 2f) - gridCfg.Padding;
 
-                float gapX = 15f;
-                float gapY = 40f;
-                int columns = UnityEngine.Mathf.FloorToInt(
-                    (mainCfg.Width - 20f) / (slotCfg.Width + gapX)
-                );
-                if (columns < 1)
-                    columns = 1;
-
-                float totalGridWidth = (columns * slotCfg.Width) + ((columns - 1) * gapX);
-                float startX = -(totalGridWidth / 2f) + (slotCfg.Width / 2f);
-                float startY = -(slotCfg.Height / 2f) - 30f;
-
-                int totalRows = UnityEngine.Mathf.CeilToInt((float)items.Count / columns);
-                float totalContentHeight = totalRows * (slotCfg.Height + gapY) + 40f;
-                float viewportHeight = mainCfg.Height * 0.9f;
+                int totalRows = Mathf.CeilToInt((float)items.Count / columns);
+                float totalContentHeight =
+                    totalRows * (gridCfg.CardHeight + gridCfg.GapY) + (gridCfg.Padding * 2f);
+                float viewportHeight = contentCfg.Height * 0.92f;
 
                 if (totalContentHeight < viewportHeight)
                     totalContentHeight = viewportHeight;
 
+                string contentName = UIName + "_Content";
+
                 // Native ScrollView
-                container.Add(
+                mainContainer.Add(
                     new CuiElement
                     {
-                        Parent = mainPanel,
+                        Parent = LayerContent,
                         Name = contentName,
                         Components =
                         {
                             new CuiImageComponent { Color = "0 0 0 0" },
-                            new Oxide.Game.Rust.Cui.CuiScrollViewComponent
+                            new CuiScrollViewComponent
                             {
                                 ContentTransform = new CuiRectTransformComponent
                                 {
                                     AnchorMin = "0 1",
                                     AnchorMax = "1 1",
-                                    OffsetMin = $"0 -{totalContentHeight}",
+                                    OffsetMin =
+                                        $"0 -{totalContentHeight.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                                     OffsetMax = "0 0",
                                 },
                                 Vertical = true,
@@ -1563,8 +1904,8 @@ namespace Oxide.Plugins
                             },
                             new CuiRectTransformComponent
                             {
-                                AnchorMin = "0.02 0.05",
-                                AnchorMax = "0.98 0.95",
+                                AnchorMin = "0.02 0.03",
+                                AnchorMax = "0.98 0.97",
                             },
                         },
                     }
@@ -1579,163 +1920,163 @@ namespace Oxide.Plugins
                     int count = (int)item["count"];
                     string logoLink = (string)item["logoLink"];
 
-                    bool isBlueprint =
-                        title != null
-                        && (
-                            title.IndexOf("чертеж", StringComparison.OrdinalIgnoreCase) >= 0
-                            || title.IndexOf("чертёж", StringComparison.OrdinalIgnoreCase) >= 0
-                            || title.IndexOf("blueprint", StringComparison.OrdinalIgnoreCase) >= 0
-                            || title.IndexOf("[ч]", StringComparison.OrdinalIgnoreCase) >= 0
-                            || title.IndexOf("[b]", StringComparison.OrdinalIgnoreCase) >= 0
-                        );
+                    bool isBlueprint = CheckIsBlueprint(item);
 
                     bool hasState = _slotStates.TryGetValue(slotId, out string slotState);
                     bool isNoSpace = hasState && slotState.StartsWith("nospace");
-                    var activeCfg = slotCfg;
-                    string bgImageName = isBlueprint
-                        ? _config.Design.ItemBlueprint.ImageName
-                        : slotCfg.ImageName;
+                    bool isBlocked = IsItemBlocked(itemId, out float remaining);
 
-                    if (hasState)
-                    {
-                        if (slotState == "success")
-                        {
-                            activeCfg = successCfg;
-                            bgImageName = successCfg.ImageName;
-                        }
-                        else if (isNoSpace)
-                        {
-                            activeCfg = _config.Design.ItemNoSpace;
-                            bgImageName = _config.Design.ItemNoSpace.ImageName;
-                        }
-                    }
+                    string cardBg = gridCfg.CardBgColor;
+                    if (hasState && slotState == "success")
+                        cardBg = gridCfg.SuccessBgColor;
+                    else if (isBlocked)
+                        cardBg = gridCfg.BlockedBgColor;
 
                     string itemPanel = $"{UIName}_Item_{i}";
 
                     int row = i / columns;
                     int col = i % columns;
-                    float currentX = startX + (col * (slotCfg.Width + gapX));
-                    float currentY = startY - (row * (slotCfg.Height + gapY));
+                    float currentX = startX + (col * (gridCfg.CardWidth + gridCfg.GapX));
+                    float currentY = startY - (row * (gridCfg.CardHeight + gridCfg.GapY));
 
-                    container.Add(
-                        new CuiElement
+                    float halfW = gridCfg.CardWidth / 2f;
+                    float halfH = gridCfg.CardHeight / 2f;
+                    float minX = currentX - halfW;
+                    float maxX = currentX + halfW;
+                    float minY = currentY - halfH;
+                    float maxY = currentY + halfH;
+
+                    mainContainer.Add(
+                        new CuiPanel
                         {
-                            Parent = contentName,
-                            Name = itemPanel,
-                            Components =
+                            Image = { Color = cardBg },
+                            RectTransform =
                             {
-                                new CuiRawImageComponent
-                                {
-                                    Png = _imageCache.ContainsKey(bgImageName)
-                                        ? _imageCache[bgImageName]
-                                        : "",
-                                },
-                                new CuiRectTransformComponent
-                                {
-                                    AnchorMin = "0.5 1",
-                                    AnchorMax = "0.5 1",
-                                    OffsetMin = GetOffset(
-                                        activeCfg.OffsetX + currentX,
-                                        activeCfg.OffsetY + currentY,
-                                        activeCfg.Width,
-                                        activeCfg.Height,
-                                        false
-                                    ),
-                                    OffsetMax = GetOffset(
-                                        activeCfg.OffsetX + currentX,
-                                        activeCfg.OffsetY + currentY,
-                                        activeCfg.Width,
-                                        activeCfg.Height,
-                                        true
-                                    ),
-                                },
+                                AnchorMin = "0.5 1",
+                                AnchorMax = "0.5 1",
+                                OffsetMin =
+                                    $"{minX.ToString(System.Globalization.CultureInfo.InvariantCulture)} {minY.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                                OffsetMax =
+                                    $"{maxX.ToString(System.Globalization.CultureInfo.InvariantCulture)} {maxY.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                             },
-                        }
+                        },
+                        contentName,
+                        itemPanel
                     );
 
-                    // Add Image of the item
-                    if (!string.IsNullOrEmpty(logoLink))
+                    // Add Title at the top
+                    mainContainer.Add(
+                        new CuiLabel
+                        {
+                            Text =
+                            {
+                                Text = title,
+                                FontSize = gridCfg.TitleFontSize,
+                                Align = TextAnchor.MiddleCenter,
+                                Color = gridCfg.TitleColor,
+                                Font = "robotocondensed-bold.ttf",
+                            },
+                            RectTransform = { AnchorMin = "0.05 0.72", AnchorMax = "0.95 0.96" },
+                        },
+                        itemPanel
+                    );
+
+                    float imgHalf = gridCfg.ImageSize / 2f;
+                    float imgY = gridCfg.ImageOffsetY;
+
+                    // CHANGE: Отрисовка изображения чертежа по URL на заднем плане предмета
+                    if (isBlueprint && !string.IsNullOrEmpty(_blueprintIconPngId))
                     {
-                        container.Add(
+                        mainContainer.Add(
                             new CuiElement
                             {
                                 Parent = itemPanel,
-                                Name = $"{itemPanel}_Icon",
+                                Name = itemPanel + "_Blueprint",
                                 Components =
                                 {
-                                    new CuiRawImageComponent
-                                    {
-                                        Png = _imageCache.ContainsKey(logoLink)
-                                            ? _imageCache[logoLink]
-                                            : "",
-                                    },
+                                    new CuiRawImageComponent { Png = _blueprintIconPngId },
                                     new CuiRectTransformComponent
                                     {
-                                        AnchorMin = "0.225 0.15",
-                                        AnchorMax = "0.775 0.7",
+                                        AnchorMin = "0.5 0.5",
+                                        AnchorMax = "0.5 0.5",
+                                        OffsetMin =
+                                            $"{(-imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)} {(imgY - imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                                        OffsetMax =
+                                            $"{imgHalf.ToString(System.Globalization.CultureInfo.InvariantCulture)} {(imgY + imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                                     },
                                 },
                             }
                         );
                     }
 
-                    // Add Title at the top
-                    container.Add(
-                        new CuiLabel
-                        {
-                            Text =
+                    // Item Icon
+                    if (
+                        !string.IsNullOrEmpty(logoLink)
+                        && _imageCache.TryGetValue(logoLink, out string logoPng)
+                    )
+                    {
+                        mainContainer.Add(
+                            new CuiElement
                             {
-                                Text = title,
-                                FontSize = 11,
-                                Align = TextAnchor.LowerCenter,
-                                Color = "1 1 1 1",
-                                Font = "robotocondensed-bold.ttf",
-                            },
-                            RectTransform = { AnchorMin = "-0.05 1.02", AnchorMax = "1.05 1.35" },
-                        },
-                        itemPanel
-                    );
+                                Parent = itemPanel,
+                                Name = itemPanel + "_Icon",
+                                Components =
+                                {
+                                    new CuiRawImageComponent { Png = logoPng },
+                                    new CuiRectTransformComponent
+                                    {
+                                        AnchorMin = "0.5 0.5",
+                                        AnchorMax = "0.5 0.5",
+                                        OffsetMin =
+                                            $"{(-imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)} {(imgY - imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                                        OffsetMax =
+                                            $"{imgHalf.ToString(System.Globalization.CultureInfo.InvariantCulture)} {(imgY + imgHalf).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                                    },
+                                },
+                            }
+                        );
+                    }
 
                     // Add Count at the bottom right
-                    container.Add(
+                    mainContainer.Add(
                         new CuiLabel
                         {
                             Text =
                             {
                                 Text = $"x{count}",
-                                FontSize = 12,
+                                FontSize = gridCfg.CountFontSize,
                                 Align = TextAnchor.LowerRight,
-                                Color = "1 1 1 1",
+                                Color = gridCfg.CountColor,
                                 Font = "robotocondensed-bold.ttf",
                             },
-                            RectTransform = { AnchorMin = "0 0.05", AnchorMax = "0.92 0.25" },
+                            RectTransform = { AnchorMin = "0 0.05", AnchorMax = "0.92 0.28" },
                         },
                         itemPanel
                     );
 
-                    if (slotState == "success")
+                    if (hasState && slotState == "success")
                     {
-                        container.Add(
+                        mainContainer.Add(
                             new CuiPanel
                             {
-                                Image = { Color = "0 0 0 0.75" },
+                                Image = { Color = gridCfg.SuccessBgColor },
                                 RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                             },
                             itemPanel,
                             $"{itemPanel}_Dim"
                         );
-                        container.Add(
+                        mainContainer.Add(
                             new CuiLabel
                             {
                                 Text =
                                 {
                                     Text = Lang("Taken", player.UserIDString),
-                                    FontSize = 14,
+                                    FontSize = 16,
                                     Align = TextAnchor.MiddleCenter,
                                     Color = "0.4 0.9 0.4 1",
                                     Font = "robotocondensed-bold.ttf",
                                 },
-                                RectTransform = { AnchorMin = "0 0.8", AnchorMax = "1 1" },
+                                RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                             },
                             $"{itemPanel}_Dim"
                         );
@@ -1743,16 +2084,16 @@ namespace Oxide.Plugins
                     else if (isNoSpace)
                     {
                         string countNeeded = slotState.Split(':')[1];
-                        container.Add(
+                        mainContainer.Add(
                             new CuiPanel
                             {
-                                Image = { Color = "0 0 0 0" },
+                                Image = { Color = gridCfg.BlockedBgColor },
                                 RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                             },
                             itemPanel,
                             $"{itemPanel}_Dim"
                         );
-                        container.Add(
+                        mainContainer.Add(
                             new CuiLabel
                             {
                                 Text =
@@ -1761,43 +2102,28 @@ namespace Oxide.Plugins
                                         Lang("NeedSlots", player.UserIDString),
                                         countNeeded
                                     ),
-                                    FontSize = 12,
+                                    FontSize = 13,
                                     Align = TextAnchor.MiddleCenter,
-                                    Color = "1 1 1 1",
+                                    Color = "1 0.7 0.7 1",
                                     Font = "robotocondensed-bold.ttf",
                                 },
-                                RectTransform = { AnchorMin = "0 0.8", AnchorMax = "1 1" },
+                                RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                             },
                             $"{itemPanel}_Dim"
                         );
                     }
-                    else if (IsItemBlocked(itemId, out float remaining))
+                    else if (isBlocked)
                     {
-                        var blockCfg = _config.Design.ItemBlocked;
-                        container.Add(
-                            new CuiElement
+                        mainContainer.Add(
+                            new CuiPanel
                             {
-                                Parent = itemPanel,
-                                Name = $"{itemPanel}_Dim",
-                                Components =
-                                {
-                                    new CuiRawImageComponent
-                                    {
-                                        Png = _imageCache[blockCfg.ImageName],
-                                    },
-                                    new CuiRectTransformComponent
-                                    {
-                                        AnchorMin = "0.5 0.5",
-                                        AnchorMax = "0.5 0.5",
-                                        OffsetMin =
-                                            $"{blockCfg.OffsetX - blockCfg.Width / 2f} {blockCfg.OffsetY - blockCfg.Height / 2f}",
-                                        OffsetMax =
-                                            $"{blockCfg.OffsetX + blockCfg.Width / 2f} {blockCfg.OffsetY + blockCfg.Height / 2f}",
-                                    },
-                                },
-                            }
+                                Image = { Color = gridCfg.BlockedBgColor },
+                                RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                            },
+                            itemPanel,
+                            $"{itemPanel}_Dim"
                         );
-                        container.Add(
+                        mainContainer.Add(
                             new CuiElement
                             {
                                 Parent = $"{itemPanel}_Dim",
@@ -1808,7 +2134,7 @@ namespace Oxide.Plugins
                                         Text = "%TIME_LEFT%",
                                         FontSize = 14,
                                         Align = TextAnchor.MiddleCenter,
-                                        Color = "1 1 1 1",
+                                        Color = "1 0.8 0.2 1",
                                         Font = "robotocondensed-bold.ttf",
                                     },
                                     new CuiCountdownComponent
@@ -1835,7 +2161,7 @@ namespace Oxide.Plugins
                     else
                     {
                         // Invisible Full-cell Button to Take
-                        container.Add(
+                        mainContainer.Add(
                             new CuiButton
                             {
                                 Button =
@@ -1852,7 +2178,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            CuiHelper.AddUi(player, container);
+            CuiHelper.AddUi(player, mainContainer);
         }
 
         #endregion
@@ -2195,12 +2521,7 @@ namespace Oxide.Plugins
                         string shortname = (string)info["bpPath"];
                         int count = (int)equip["count"] * quantityMultiplier;
 
-                        bool isBlueprint =
-                            title.IndexOf("чертеж", StringComparison.OrdinalIgnoreCase) >= 0
-                            || title.IndexOf("чертёж", StringComparison.OrdinalIgnoreCase) >= 0
-                            || title.IndexOf("blueprint", StringComparison.OrdinalIgnoreCase) >= 0
-                            || title.IndexOf("[ч]", StringComparison.OrdinalIgnoreCase) >= 0
-                            || title.IndexOf("[b]", StringComparison.OrdinalIgnoreCase) >= 0;
+                        bool isBlueprint = CheckIsBlueprint(slot);
 
                         if (isBlueprint)
                         {
@@ -2333,7 +2654,8 @@ namespace Oxide.Plugins
             lang.RegisterMessages(
                 new Dictionary<string, string>
                 {
-                    ["Title"] = "RSurvivalStore",
+                    ["Title"] = "CART",
+                    ["TakeAll"] = "CLAIM ALL",
                     ["Empty"] = "Your inventory is empty.",
                     ["Taken"] = "TAKEN",
                     ["ApiError"] = "Failed to communicate with the shop API.",
@@ -2351,7 +2673,8 @@ namespace Oxide.Plugins
             lang.RegisterMessages(
                 new Dictionary<string, string>
                 {
-                    ["Title"] = "RSurvivalStore",
+                    ["Title"] = "КОРЗИНА",
+                    ["TakeAll"] = "ЗАБРАТЬ ВСЁ",
                     ["Empty"] = "Ваша корзина пуста.",
                     ["Taken"] = "ВЗЯТО",
                     ["ApiError"] = "Ошибка связи с сервером магазина.",
